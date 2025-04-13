@@ -1,0 +1,48 @@
+name: Auto-assign PR and move to Review
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+jobs:
+  assign-and-move:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Assign PR to other team member
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = context.payload.pull_request.number;
+            const teamMembers = ['GitHub-Username1', 'GitHub-Username2']; // Eure beiden GitHub-Usernames
+            const creator = context.payload.pull_request.user.login;
+            const assignee = teamMembers.find(member => member !== creator);
+            
+            await github.rest.issues.addAssignees({
+              owner,
+              repo,
+              issue_number: prNumber,
+              assignees: [assignee],
+            });
+      - name: Move PR to "In Review" column
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const prNumber = context.payload.pull_request.number;
+            const projectName = "Euer Projektname"; // Name eures GitHub Project Boards
+            
+            // 1. Finde das Projekt-Board
+            const projects = await github.rest.projects.listForRepo({ owner, repo });
+            const project = projects.data.find(p => p.name === projectName);
+            if (!project) return;
+            
+            // 2. Finde die "In Review"-Spalte
+            const columns = await github.rest.projects.listColumns({ project_id: project.id });
+            const reviewColumn = columns.data.find(c => c.name === "In Review");
+            if (!reviewColumn) return;
+            
+            // 3. Füge den PR zur Spalte hinzu
+            await github.rest.projects.createCard({
+              column_id: reviewColumn.id,
+              content_id: context.payload.pull_request.id,
+              content_type: 'PullRequest',
+            });
