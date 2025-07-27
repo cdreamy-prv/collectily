@@ -1,0 +1,65 @@
+name: Check Commit Messages
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  check-commit-messages:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Check commit messages
+      run: |
+        # Get commits in this push/PR
+        if [ "${{ github.event_name }}" == "push" ]; then
+          # For push, check the pushed commits
+          commits=$(git rev-list ${{ github.event.before }}..${{ github.event.after }})
+        else
+          # For PR, check commits in the PR
+          commits=$(git rev-list origin/${{ github.base_ref }}..HEAD)
+        fi
+        
+        # Check each commit message
+        invalid_commits=()
+        for commit in $commits; do
+          message=$(git log --format=%s -n 1 $commit)
+          
+          # Skip merge commits
+          if [[ $message == Merge* ]]; then
+            continue
+          fi
+          
+          # Check format: type(scope): description
+          if ! echo "$message" | grep -qE '^(feat|fix|docs|style|refactor|test|chore|perf)(\([a-zA-Z]+\))?: .{1,72}$'; then
+            invalid_commits+=("$commit: $message")
+          fi
+        done
+        
+        # Report results
+        if [ ${#invalid_commits[@]} -gt 0 ]; then
+          echo "❌ Invalid commit messages found:"
+          echo ""
+          for commit in "${invalid_commits[@]}"; do
+            echo "  $commit"
+          done
+          echo ""
+          echo "📝 Required format: type(scope): description"
+          echo ""
+          echo "🏷️  Valid types: feat, fix, docs, style, refactor, test, chore, perf"
+          echo ""
+          echo "✅ Examples:"
+          echo "  feat(auth): add login screen"
+          echo "  fix(ui): resolve button padding issue"
+          echo "  chore: update dependencies"
+          exit 1
+        else
+          echo "✅ All commit messages are properly formatted!"
+        fi
